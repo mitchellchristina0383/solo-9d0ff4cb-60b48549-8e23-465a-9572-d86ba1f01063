@@ -238,6 +238,7 @@ input:focus, textarea:focus {
 }
 .status.ok { border-color: rgba(110, 231, 168, 0.35); background: rgba(110, 231, 168, 0.07); }
 .status.bad { border-color: rgba(255, 107, 107, 0.38); background: rgba(255, 107, 107, 0.07); }
+.status.warn { border-color: rgba(242, 181, 68, 0.38); background: rgba(242, 181, 68, 0.07); }
 .status .badge {
   flex: none;
   font: 600 11px/1.8 var(--mono);
@@ -247,6 +248,72 @@ input:focus, textarea:focus {
 }
 .status.ok .badge { background: rgba(110, 231, 168, 0.16); color: var(--ok); }
 .status.bad .badge { background: rgba(255, 107, 107, 0.16); color: var(--danger); }
+.status.warn .badge { background: rgba(242, 181, 68, 0.18); color: var(--warn); }
+
+/* checkbox field */
+.check-line {
+  display: flex !important;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.check-line input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+.check-line > span { display: inline-flex; align-items: center; gap: 8px; }
+
+/* low-peak schedule */
+.schedule-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.schedule-order {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.order-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg);
+}
+.order-item.moved {
+  border-color: rgba(88, 211, 196, 0.4);
+  background: rgba(88, 211, 196, 0.06);
+}
+.order-pos {
+  flex: none;
+  font: 600 11.5px var(--mono);
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 5px;
+  padding: 1px 7px;
+}
+.order-label {
+  font: 12.5px var(--mono);
+  color: var(--text);
+  background: transparent;
+}
+.order-from {
+  margin-left: auto;
+  font: 11px var(--mono);
+  color: var(--warn);
+  white-space: nowrap;
+}
 
 .stat-grid {
   display: grid;

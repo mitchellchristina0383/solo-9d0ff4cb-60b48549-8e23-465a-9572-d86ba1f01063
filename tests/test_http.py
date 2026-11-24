@@ -140,3 +140,112 @@ def test_api_insufficient_capacity_is_a_200_report(client):
     assert body["ok"] is False
     assert body["failure"]["needed"] == 2
     assert body["failure"]["step"] == 3
+
+
+REORDER_PAYLOAD = {
+    "capacity": "21",
+    "inputs": (
+        "A: 1, -2, 3, -4, 5, -6, 7, -8\n"
+        "B: 1, 2, 3, 4\nC: 10, -10, 20, -20"
+    ),
+    "ops": "x = relu(A)\ny = add(B, C)\nu = relu(y)",
+    "outputs": "x, u",
+}
+
+
+def test_api_low_peak_reorders_and_executes(client):
+    response = client.post("/api/run", json={**REORDER_PAYLOAD, "low_peak": True})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["mode"] == "low_peak"
+    assert body["executed"] is True
+    info = body["low_peak"]
+    assert info["selected"] is True
+    assert info["max_ops"] == 12
+    assert info["reordered"] is True
+    assert info["original_peak"] == 24
+    assert info["min_elements"] == 20
+    selected = [entry["index"] for entry in info["order"]]
+    assert sorted(selected) == [0, 1, 2]
+    assert selected in ([1, 2, 0], [1, 0, 2])
+    assert info["capacity_sufficient"] is True
+    # The reordered run fits where the original order would not.
+    assert body["ok"] is True
+    assert body["peak"]["elements"] == 20
+    values = {out["name"]: out["values"] for out in body["outputs"]}
+    assert values["x"] == ["1", "0", "3", "0", "5", "0", "7", "0"]
+    assert values["u"] == ["11", "0", "23", "0"]
+
+
+def test_api_low_peak_reordered_values_match_original_order(client):
+    with_order = client.post(
+        "/api/run", json={**REORDER_PAYLOAD, "capacity": "100", "low_peak": True}
+    ).get_json()
+    original = client.post(
+        "/api/run", json={**REORDER_PAYLOAD, "capacity": "100"}
+    ).get_json()
+    a = {o["name"]: o["values"] for o in with_order["outputs"]}
+    b = {o["name"]: o["values"] for o in original["outputs"]}
+    assert a == b
+
+
+def test_api_low_peak_skips_execution_when_capacity_short(client):
+    response = client.post(
+        "/api/run",
+        json={**REORDER_PAYLOAD, "capacity": "15", "low_peak": True},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["mode"] == "low_peak"
+    assert body["executed"] is False
+    assert body["ok"] is False
+    assert body["steps"] == []
+    assert body["outputs"] == []
+    info = body["low_peak"]
+    assert info["executed"] is False
+    assert info["capacity_sufficient"] is False
+    assert info["min_elements"] == 20
+    assert "15" in info["skip_reason"] and "20" in info["skip_reason"]
+    assert sorted(entry["index"] for entry in info["order"]) == [0, 1, 2]
+
+
+def test_api_low_peak_keeps_original_order_when_already_optimal(client):
+    response = client.post(
+        "/api/run",
+        json={
+            "capacity": "20",
+            "inputs": "a: 1, 2, 3\nb: 4, 5, 6",
+            "ops": "s = add(a, b)\nr = relu(s)",
+            "outputs": "r",
+            "low_peak": "true",
+        },
+    )
+    assert response.status_code == 200
+    info = response.get_json()["low_peak"]
+    assert info["reordered"] is False
+    assert [entry["index"] for entry in info["order"]] == [0, 1]
+
+
+def test_api_low_peak_rejects_more_than_twelve_ops(client):
+    ops = "\n".join(f"r{i} = relu({'x' if i == 0 else f'r{i-1}'})" for i in range(13))
+    response = client.post(
+        "/api/run",
+        json={
+            "capacity": "100",
+            "inputs": "x: 1, 2",
+            "ops": ops,
+            "outputs": "r12",
+            "low_peak": True,
+        },
+    )
+    assert response.status_code == 400
+    messages = response.get_json()["errors"]
+    assert any("12" in message for message in messages)
+
+
+def test_api_without_low_peak_unchanged_shape(client):
+    response = client.post("/api/run", json=REORDER_PAYLOAD)
+    body = response.get_json()
+    assert "low_peak" not in body
+    assert "mode" not in body
+    assert body["ok"] is False  # original order overflows at capacity 21

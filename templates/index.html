@@ -58,11 +58,26 @@
           <p class="field-help">逗号分隔。指定输出会一直驻留到执行结束，最后再统一回收。</p>
         </div>
 
+        <div class="field">
+          <label class="check-line" for="low-peak">
+            <input id="low-peak" type="checkbox">
+            <span>
+              低峰值试跑
+              <span class="tag">≤ 12 个算子</span>
+            </span>
+          </label>
+          <p class="field-help">
+            输入仍按填写顺序装载；从所有符合依赖的算子顺序里找出缓冲峰值最低的一条（切片只计来源整块存储、
+            同源一份、输出保留到结束）。容量足够才按新顺序执行，容量不足则只给试算结果。
+          </p>
+        </div>
+
         <div class="presets">
           <span class="presets-label">示例</span>
           <button type="button" class="chip" data-preset="fragmentation">空闲区分散 → 整理</button>
           <button type="button" class="chip" data-preset="slice">保留切片视图</button>
           <button type="button" class="chip" data-preset="full">容量不足</button>
+          <button type="button" class="chip" data-preset="reorder">低峰值选序</button>
         </div>
 
         <div class="actions">
@@ -87,9 +102,19 @@
         <div id="result" hidden>
           <div id="status" class="status"></div>
 
+          <div id="schedule-block" class="block" hidden>
+            <div class="block-head">
+              <h3>低峰值选序</h3>
+              <span id="schedule-meta" class="hint"></span>
+            </div>
+            <div id="schedule-summary" class="schedule-summary"></div>
+            <ol id="schedule-order" class="schedule-order"></ol>
+            <p id="schedule-note" class="layout-note"></p>
+          </div>
+
           <div id="stats" class="stat-grid"></div>
 
-          <div class="block">
+          <div id="peak-block" class="block">
             <div class="block-head">
               <h3>缓冲占用峰值</h3>
               <span id="peak-caption" class="hint"></span>
@@ -113,7 +138,7 @@
             <div id="outputs" class="outputs"></div>
           </div>
 
-          <div class="block">
+          <div id="layout-block" class="block">
             <div class="block-head">
               <h3>缓冲布局</h3>
               <span id="layout-meta" class="hint"></span>
@@ -123,7 +148,7 @@
             <div id="layout-legend" class="legend"></div>
           </div>
 
-          <div class="block">
+          <div id="timeline-block" class="block">
             <div class="block-head">
               <h3>执行时间线</h3>
               <span class="hint">每步的占用、回收与整理</span>

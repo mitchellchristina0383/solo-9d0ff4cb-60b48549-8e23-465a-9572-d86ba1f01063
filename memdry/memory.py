@@ -242,17 +242,23 @@ class Allocator:
 
 
 class Executor:
-    def __init__(self, plan: Plan):
+    def __init__(self, plan: Plan, order: tuple[int, ...] | None = None):
         self.plan = plan
+        self.order = (
+            tuple(range(len(plan.ops))) if order is None else tuple(order)
+        )
+        if sorted(self.order) != list(range(len(plan.ops))):
+            raise ValueError("算子执行顺序必须是原文算子下标的排列")
         self.alloc = Allocator(plan.capacity)
         self.handles: dict[str, TensorHandle] = {}
         self.steps: list[dict] = []
         self.warnings = list(plan.warnings)
         self.overflow_values = 0
+        # Last consumer per execution position in *self.order*.
         self.last_use: dict[str, int] = {}
-        for index, op in enumerate(plan.ops):
-            for name in op.operands:
-                self.last_use[name] = index
+        for position, index in enumerate(self.order):
+            for name in plan.ops[index].operands:
+                self.last_use[name] = position
         self.output_set = set(plan.outputs)
         self.color_seq = 0
         self.current_action: dict | None = None
@@ -382,19 +388,22 @@ class Executor:
             self.current_action = None
 
     def _run_ops(self) -> None:
-        for index, op in enumerate(self.plan.ops):
+        for position, index in enumerate(self.order):
+            op = self.plan.ops[index]
             action = {
                 "name": op.name,
                 "kind": op.kind,
                 "line": op.line,
                 "operands": list(op.operands),
                 "length": op.length,
+                "original_position": index + 1,
+                "position": position + 1,
             }
             self.current_action = action
             if op.kind == "slice":
-                self._run_slice(index, op, action)
+                self._run_slice(position, op, action)
             else:
-                self._run_elementwise(index, op, action)
+                self._run_elementwise(position, op, action)
             self.current_action = None
 
     def _run_slice(self, index: int, op, action: dict) -> None:
@@ -581,8 +590,8 @@ class Executor:
         }
 
 
-def execute_plan(plan: Plan) -> dict:
-    executor = Executor(plan)
+def execute_plan(plan: Plan, order: tuple[int, ...] | None = None) -> dict:
+    executor = Executor(plan, order)
     try:
         result = executor.run()
     finally:

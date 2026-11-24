@@ -21,6 +21,16 @@
       ops: "c = add(a, b)",
       outputs: "c",
     },
+    reorder: {
+      capacity: "21",
+      inputs:
+        "A: 1, -2, 3, -4, 5, -6, 7, -8\n" +
+        "B: 1, 2, 3, 4\n" +
+        "C: 10, -10, 20, -20",
+      ops: "x = relu(A)\ny = add(B, C)\nu = relu(y)",
+      outputs: "x, u",
+      low_peak: true,
+    },
   };
 
   var PALETTE = [
@@ -53,6 +63,7 @@
     $("inputs").value = preset.inputs;
     $("ops").value = preset.ops;
     $("outputs").value = preset.outputs;
+    $("low-peak").checked = Boolean(preset.low_peak);
     clearErrors();
     setStatus("");
   }
@@ -84,6 +95,7 @@
       inputs: $("inputs").value,
       ops: $("ops").value,
       outputs: $("outputs").value,
+      low_peak: $("low-peak").checked,
     };
   }
 
@@ -133,13 +145,26 @@
     $("empty").hidden = true;
     $("result").hidden = false;
 
+    var skipped = data.mode === "low_peak" && data.executed === false;
     var meta = [];
     meta.push("容量 " + fmt(data.capacity) + " 元素");
-    meta.push(data.steps.length + " 步");
-    if (data.stats.compactions) meta.push(data.stats.compactions + " 次整理");
+    if (data.mode === "low_peak") {
+      meta.push("低峰值模式 · " + (skipped ? "未执行" : "按选序执行"));
+    }
+    if (data.steps && data.steps.length) meta.push(data.steps.length + " 步");
+    if (data.stats && data.stats.compactions) meta.push(data.stats.compactions + " 次整理");
     $("result-meta").textContent = meta.join(" · ");
 
-    renderStatus(data);
+    renderStatus(data, skipped);
+    renderSchedule(data);
+    ["stats", "peak-block", "failure-block", "output-block",
+     "layout-block", "timeline-block"].forEach(function (id) {
+      $(id).hidden = skipped;
+    });
+    if (skipped) {
+      renderWarnings(data);
+      return;
+    }
     renderStats(data);
     renderPeak(data);
     renderFailure(data);
@@ -149,10 +174,16 @@
     renderWarnings(data);
   }
 
-  function renderStatus(data) {
+  function renderStatus(data, skipped) {
     var box = $("status");
     box.className = "status " + (data.ok ? "ok" : "bad");
     box.innerHTML = "";
+    if (skipped) {
+      box.className = "status warn";
+      box.appendChild(el("span", "badge", "跳过执行"));
+      box.appendChild(el("span", null, data.low_peak.skip_reason));
+      return;
+    }
     box.appendChild(el("span", "badge", data.ok ? "成功" : "失败"));
     var text;
     if (data.ok) {
@@ -164,6 +195,68 @@
       text = data.failure.message;
     }
     box.appendChild(el("span", null, text));
+  }
+
+  function renderSchedule(data) {
+    var block = $("schedule-block");
+    var info = data.low_peak;
+    if (!info) {
+      block.hidden = true;
+      return;
+    }
+    block.hidden = false;
+    $("schedule-meta").textContent = info.ops_count + " 个算子 · 选序只使用计划元数据";
+
+    var summary = $("schedule-summary");
+    summary.innerHTML = "";
+    summary.appendChild(
+      stat("最少需要元素", fmt(info.min_elements) +
+        " <small>/ 容量 " + fmt(info.capacity) + "</small>")
+    );
+    summary.appendChild(
+      stat("原顺序峰值", fmt(info.original_peak) + " <small>元素</small>")
+    );
+    summary.appendChild(
+      stat("输入装载峰值", fmt(info.input_peak) + " <small>元素</small>")
+    );
+    summary.appendChild(
+      stat("重排后节省", fmt(info.saved) + " <small>元素</small>")
+    );
+    summary.appendChild(
+      stat(
+        "是否重排",
+        info.reordered
+          ? "是"
+          : "否 <small>原顺序已是最低峰值</small>"
+      )
+    );
+
+    var list = $("schedule-order");
+    list.innerHTML = "";
+    info.order.forEach(function (entry) {
+      var item = el("li", "order-item" + (entry.original_position !== entry.position ? " moved" : ""));
+      item.appendChild(el("span", "order-pos", "#" + entry.position));
+      item.appendChild(el("code", "order-label", entry.label));
+      if (entry.original_position !== entry.position) {
+        item.appendChild(
+          el("span", "order-from", "原第 " + entry.original_position + " 个")
+        );
+      }
+      list.appendChild(item);
+    });
+
+    var notes = [];
+    if (info.reordered) {
+      notes.push("输入仍按填写顺序装载，仅重排算子；切片视图与来源共用整块存储、同源只计一份。");
+    } else {
+      notes.push("所有符合依赖的顺序里，原文算子顺序的峰值已经最低。");
+    }
+    if (info.executed) {
+      notes.push("容量足够，已按上面的顺序执行一次，输出值与原顺序在容量充足时的 float32 结果一致。");
+    } else {
+      notes.push(info.skip_reason + "；未产生输出与时间线，仅展示试算结果。");
+    }
+    $("schedule-note").textContent = notes.join(" ");
   }
 
   function stat(key, valueHtml) {
